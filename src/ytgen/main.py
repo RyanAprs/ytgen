@@ -10,6 +10,7 @@ from . import checks
 from . import research as research_mod
 from . import script as script_mod
 from . import tts as tts_mod
+from . import visuals as visuals_mod
 from . import llm as llm_mod
 
 console = Console()
@@ -145,7 +146,35 @@ def cmd_generate(args) -> int:
         f"  [green]✓[/] {len(tts_data['scenes'])} clips, "
         f"{tts_data['total_sec']:.1f}s audio → cache/audio/")
 
-    console.print("\n[yellow]M4:[/] voiceover done. Visuals (M5) next.")
+    # ---- Stage 5: visual sourcing (M5) ----
+    console.print(f"[bold cyan]▶ Stage 5 visuals[/] ({'+'.join(cfg.get('visuals.sources', []))})...")
+    with console.status("sourcing stock footage..."):
+        vis_data = visuals_mod.run(tts_data["scenes"], cfg, cfg.cache_dir)
+    ph = sum(1 for s in vis_data["scenes"] if s["is_placeholder"])
+    console.print(
+        f"  [green]✓[/] {len(vis_data['scenes'])} clips "
+        f"({ph} placeholder) → cache/visuals/")
+
+    console.print("\n[yellow]M5:[/] visuals done. Captions+assembly (M6) next.")
+    return 0
+
+
+def cmd_visuals(args) -> int:
+    cfg = Config.load(args.config)
+    tts_path = cfg.cache_dir / "tts.json"
+    if not tts_path.exists():
+        console.print("[red]No cache/tts.json — run `ytgen tts` first.[/]")
+        return 2
+    scenes = __import__("json").loads(tts_path.read_text())["scenes"]
+    console.print(f"[bold]Visuals[/] {len(scenes)} scenes "
+                  f"({'+'.join(cfg.get('visuals.sources', []))})")
+    with console.status("sourcing footage..."):
+        data = visuals_mod.run(scenes, cfg, cfg.cache_dir)
+    ph = sum(1 for s in data["scenes"] if s["is_placeholder"])
+    console.print(f"[green]Done.[/] {len(data['scenes'])} clips, {ph} placeholders")
+    for s in data["scenes"][:8]:
+        tag = "[red]PLACEHOLDER[/]" if s["is_placeholder"] else f"[green]{s['source']}[/]"
+        console.print(f"  [{s['index']}] {tag} q={s['query']!r}")
     return 0
 
 
@@ -223,6 +252,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     t = sub.add_parser("tts", help="run TTS stage only (reads cache/scenes.json)")
     t.set_defaults(func=cmd_tts)
+
+    v = sub.add_parser("visuals", help="run visual sourcing only (reads cache/tts.json)")
+    v.set_defaults(func=cmd_visuals)
 
     g = sub.add_parser("generate", help="generate a video")
     g.add_argument("--topic", help="topic to generate a video about")
