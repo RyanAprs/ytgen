@@ -70,12 +70,29 @@ def _build_scene(scene: dict, caps: list[dict], out_mp4: Path,
     _run(cmd)
 
 
-def _pick_music(cfg) -> Path | None:
+def _pick_music(cfg, cache_dir: Path | None = None, topic: str = "",
+                min_duration: float = 0.0) -> Path | None:
     if not cfg.get("music.enabled", True):
         return None
     mdir = Path(cfg.get("music.dir", "assets/music"))
     if not mdir.is_absolute():
         mdir = cfg.root / mdir
+
+    # provider "jamendo": fetch a real instrumental track (unless one is cached
+    # for this run). Falls back to any local file if the API is unavailable.
+    if cfg.get("music.provider", "local") == "jamendo" and cache_dir is not None:
+        from . import music as music_mod
+        cached = cache_dir / "music.json"
+        if cached.exists():
+            import json as _json
+            p = Path(_json.loads(cached.read_text()).get("path", ""))
+            if p.exists():
+                return p
+        info = music_mod.fetch(cfg, cache_dir, topic, min_duration=min_duration)
+        if info:
+            return Path(info["path"])
+        # else fall through to local files
+
     for ext in ("*.mp3", "*.m4a", "*.wav", "*.ogg"):
         files = sorted(mdir.glob(ext))
         if files:
@@ -122,7 +139,13 @@ def run(cfg, cache_dir: Path, output_dir: Path) -> dict:
           "-c", "copy", str(concat_mp4)])
 
     final = output_dir / "video.mp4"
-    music = _pick_music(cfg)
+    # topic + duration so jamendo can pick an instrumental long enough to avoid loop seams
+    _topic = ""
+    _sp = cache_dir / "script.json"
+    if _sp.exists():
+        _topic = json.loads(_sp.read_text()).get("topic", "")
+    _vid_dur = float(tts.get("total_sec", 0) or 0)
+    music = _pick_music(cfg, cache_dir=cache_dir, topic=_topic, min_duration=_vid_dur)
     if music:
         vol = cfg.get("music.volume", 0.12)
         # normalize=0 keeps voice at full level (default amix halves inputs -> quiet mix);

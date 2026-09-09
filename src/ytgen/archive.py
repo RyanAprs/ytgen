@@ -77,3 +77,29 @@ def run(cfg, cache_dir: Path, output_dir: Path) -> dict:
         }, indent=2, ensure_ascii=False)
     )
     return {"archived": n, "dir": str(dest)}
+
+
+def project_dir(cfg, cache_dir: Path, output_dir: Path) -> Path:
+    """Per-project output folder output/<slug> derived from the cached topic."""
+    topic = ""
+    sp = cache_dir / "script.json"
+    if sp.exists():
+        topic = json.loads(sp.read_text()).get("topic", "")
+    if not topic and (cache_dir / ".topic").exists():
+        topic = (cache_dir / ".topic").read_text().strip()
+    return output_dir / _slug(topic)
+
+
+def finalize(cfg, cache_dir: Path, output_dir: Path) -> dict:
+    """Move the final deliverables (video/thumbnail/description/metadata) from the
+    top-level output/ into output/<slug>/ so a new video never overwrites them."""
+    dest = project_dir(cfg, cache_dir, output_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    moved = []
+    for name in ("video.mp4", "thumbnail.png", "description.txt", "metadata.json"):
+        src = output_dir / name
+        if src.exists():
+            out = dest / name
+            shutil.move(str(src), str(out))
+            moved.append(out.name)
+    return {"moved": moved, "dir": str(dest)}

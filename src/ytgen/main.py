@@ -98,7 +98,7 @@ def _clear_stale_cache(cfg, topic: str | None) -> None:
             d = cfg.cache_dir / sub
             if d.exists():
                 shutil.rmtree(d, ignore_errors=True)
-        for f in ("scenes.json", "tts.json", "visuals.json", "concat.mp4", "concat.txt"):
+        for f in ("scenes.json", "tts.json", "visuals.json", "concat.mp4", "concat.txt", "music.json"):
             (cfg.cache_dir / f).unlink(missing_ok=True)
         marker.write_text(topic)
 
@@ -214,6 +214,11 @@ def cmd_generate(args) -> int:
         arch = archive_mod.run(cfg, cfg.cache_dir, cfg.output_dir)
         if arch["archived"]:
             console.print(f"[green]✓ Archived {arch['archived']} clips:[/] {arch['dir']}")
+
+    # ---- move final deliverables into per-project folder (no overwrite on next run) ----
+    fin = archive_mod.finalize(cfg, cfg.cache_dir, cfg.output_dir)
+    if fin["moved"]:
+        console.print(f"[green]✓ Final files → {fin['dir']}[/] ({', '.join(fin['moved'])})")
 
     console.print("[yellow]Pipeline complete (M1-M7).[/]")
     return 0

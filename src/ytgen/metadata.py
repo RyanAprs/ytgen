@@ -127,6 +127,16 @@ def run(cfg, cache_dir: Path, output_dir: Path) -> dict:
                 sources.append(u)
 
     desc_full = desc + "\n\n"
+    # music attribution (Jamendo CC-BY compliance)
+    mp = cache_dir / "music.json"
+    if mp.exists():
+        try:
+            from . import music as music_mod
+            line = music_mod.credit_line(json.loads(mp.read_text()))
+            if line:
+                desc_full += line + "\n\n"
+        except Exception:
+            pass
     if sources:
         desc_full += "Sources:\n" + "\n".join(f"- {u}" for u in sources) + "\n\n"
     desc_full += "#" + " #".join(t.replace(" ", "") for t in tags[:5])
