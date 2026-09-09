@@ -73,23 +73,49 @@ SCENES_SYS = (
 )
 
 
+def _local_split(script: str, wpm: int) -> list[dict]:
+    """Fallback: split by sentences into ~2-sentence scenes, keywords from nouns."""
+    import re
+    sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", script) if s.strip()]
+    out, buf = [], []
+    for s in sents:
+        buf.append(s)
+        if len(buf) >= 2:
+            text = " ".join(buf)
+            words = [w.strip(".,!?;:\"'").lower() for w in text.split()]
+            kw = [w for w in words if len(w) > 4][:3] or ["abstract", "background"]
+            out.append({"text": text, "visual_keywords": kw})
+            buf = []
+    if buf:
+        text = " ".join(buf)
+        out.append({"text": text, "visual_keywords": ["abstract", "background"]})
+    return out
+
+
 def split_scenes(script: str, cfg, cache_dir: Path) -> dict:
     provider = cfg.get("llm.provider", "groq")
-    model = cfg.get("llm.model", "llama-3.3-70b-versatile")
+    model = cfg.get("llm.model", "openai/gpt-oss-20b")
     wpm = cfg.get("llm.wpm", 150)
 
     user = (
         "Split this narration into sequential scenes. Each scene = 1-2 sentences "
         "of the ORIGINAL text (do not rewrite), plus 2-4 concrete visual search "
         "keywords for stock footage.\n\n"
-        "Return JSON: {\"scenes\":[{\"text\":\"...\",\"visual_keywords\":[\"...\"]}]}\n\n"
+        "Return ONLY valid JSON, no prose:\n"
+        "{\"scenes\":[{\"text\":\"...\",\"visual_keywords\":[\"...\"]}]}\n\n"
         f"Narration:\n{script}"
     )
-    parsed = llm.chat_json(
-        [{"role": "system", "content": SCENES_SYS}, {"role": "user", "content": user}],
-        provider=provider, model=model, temperature=0.3,
-    )
-    scenes = parsed.get("scenes", [])
+    try:
+        parsed = llm.chat_json(
+            [{"role": "system", "content": SCENES_SYS}, {"role": "user", "content": user}],
+            provider=provider, model=model, temperature=0.2,
+        )
+        scenes = parsed.get("scenes", [])
+        if not scenes:
+            raise ValueError("empty scenes")
+    except Exception:
+        scenes = _local_split(script, wpm)
+
     out = []
     for i, sc in enumerate(scenes):
         text = (sc.get("text") or "").strip()

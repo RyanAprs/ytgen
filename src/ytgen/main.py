@@ -144,9 +144,13 @@ def cmd_script(args) -> int:
     research_path = cfg.cache_dir / "research.json"
     research_data = {}
     if research_path.exists():
-        research_data = __import__("json").loads(research_path.read_text())
-    elif not args.no_research:
-        console.print("[yellow]No research.json — running research first...[/]")
+        cached = __import__("json").loads(research_path.read_text())
+        if cached.get("topic") == args.topic:
+            research_data = cached
+        else:
+            console.print(f"[yellow]Cached research is for {cached.get('topic')!r}, re-running...[/]")
+    if not research_data and not args.no_research:
+        console.print("[yellow]Running research...[/]")
         research_data = research_mod.run(
             args.topic, cfg.cache_dir, max_sources=cfg.get("research.max_sources", 6))
     provider = cfg.get("llm.provider", "groq")

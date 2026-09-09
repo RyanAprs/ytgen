@@ -18,10 +18,27 @@ class LLMError(RuntimeError):
 
 
 def _post(url: str, headers: dict, payload: dict, timeout: int) -> dict:
-    resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
-    if resp.status_code >= 400:
-        raise LLMError(f"{resp.status_code}: {resp.text[:400]}")
-    return resp.json()
+    import time
+    for attempt in range(4):
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        if resp.status_code == 429:
+            # honor retry hint if present, else backoff
+            wait = 5 * (attempt + 1)
+            try:
+                msg = resp.json()["error"]["message"]
+                import re
+                m = re.search(r"try again in ([\d.]+)s", msg)
+                if m:
+                    wait = float(m[1]) + 1
+            except Exception:
+                pass
+            if attempt < 3:
+                time.sleep(min(wait, 30))
+                continue
+        if resp.status_code >= 400:
+            raise LLMError(f"{resp.status_code}: {resp.text[:400]}")
+        return resp.json()
+    raise LLMError("429: rate limit — retries exhausted")
 
 
 def chat(
@@ -39,7 +56,11 @@ def chat(
         key = os.getenv("GROQ_API_KEY")
         if not key:
             raise LLMError("GROQ_API_KEY not set. Add it to .env (console.groq.com).")
-        payload = {"model": model, "messages": messages, "temperature": temperature}
+        payload = {"model": model, "messages": messages, "temperature": temperature,
+                   "max_completion_tokens": 3000}
+        # gpt-oss reasoning models: keep reasoning short so content isn't starved
+        if "gpt-oss" in model:
+            payload["reasoning_effort"] = "low"
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
         data = _post(GROQ_URL, {"Authorization": f"Bearer {key}"}, payload, timeout)
@@ -71,9 +92,18 @@ def chat(
 
 
 def chat_json(messages: list[dict], **kw) -> dict:
-    """chat() expecting JSON output; tolerant parse."""
-    raw = chat(messages, json_mode=True, **kw)
-    raw = raw.strip()
+    """chat() expecting JSON output; tolerant parse with fallback.
+
+    Some reasoning models (gpt-oss) fail strict json_object mode. On failure,
+    retry without json_mode and extract the JSON object manually.
+    """
+    try:
+        raw = chat(messages, json_mode=True, **kw)
+    except LLMError:
+        raw = chat(messages, json_mode=False, **kw)
+    raw = (raw or "").strip()
+    if not raw:
+        raw = chat(messages, json_mode=False, **kw).strip()
     # strip code fences if model wrapped output
     if raw.startswith("```"):
         raw = raw.split("```", 2)[1]

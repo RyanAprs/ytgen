@@ -6,7 +6,7 @@ fps: 30
 # ---- Script / LLM ----
 llm:
   provider: "groq"         # groq | openai | ollama
-  model: "llama-3.3-70b-versatile"
+  model: "openai/gpt-oss-20b"
   target_duration_sec: 180 # ~3 min video
   # words-per-minute for narration (used to size script to duration)
   wpm: 150
