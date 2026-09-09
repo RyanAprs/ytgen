@@ -27,6 +27,7 @@ captions:
   enabled: true
   font: "Arial"
   font_size: 42
+  max_words: 4
   primary_color: "&H00FFFFFF"   # white (ASS BGR)
   outline: 3
 

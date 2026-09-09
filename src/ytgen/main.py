@@ -11,6 +11,7 @@ from . import research as research_mod
 from . import script as script_mod
 from . import tts as tts_mod
 from . import visuals as visuals_mod
+from . import assemble as assemble_mod
 from . import llm as llm_mod
 
 console = Console()
@@ -155,7 +156,29 @@ def cmd_generate(args) -> int:
         f"  [green]✓[/] {len(vis_data['scenes'])} clips "
         f"({ph} placeholder) → cache/visuals/")
 
-    console.print("\n[yellow]M5:[/] visuals done. Captions+assembly (M6) next.")
+    # ---- Stage 6: assembly + captions + music (M6) ----
+    console.print("[bold cyan]▶ Stage 6 assemble[/] (render + captions + music)...")
+    with console.status("rendering scenes + concatenating (may take a few min)..."):
+        asm = assemble_mod.run(cfg, cfg.cache_dir, cfg.output_dir)
+    console.print(
+        f"  [green]✓[/] {asm['scenes']} scenes @ {asm['resolution']} → {asm['output']}")
+
+    console.print(f"\n[bold green]✓ Video ready:[/] {asm['output']}")
+    console.print("[yellow]M6:[/] full video done. Metadata/thumbnail (M7) next.")
+    return 0
+
+
+def cmd_assemble(args) -> int:
+    cfg = Config.load(args.config)
+    if not (cfg.cache_dir / "tts.json").exists() or not (cfg.cache_dir / "visuals.json").exists():
+        console.print("[red]Need cache/tts.json + cache/visuals.json — run tts & visuals first.[/]")
+        return 2
+    console.print("[bold]Assembling video[/] (render + captions + music)...")
+    with console.status("rendering (may take a few min)..."):
+        asm = assemble_mod.run(cfg, cfg.cache_dir, cfg.output_dir)
+    console.print(f"[green]Done.[/] {asm['scenes']} scenes @ {asm['resolution']}")
+    console.print(f"Music: {asm['music'] or '(none — add files to assets/music/)'}")
+    console.print(f"[bold green]→ {asm['output']}[/]")
     return 0
 
 
@@ -255,6 +278,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     v = sub.add_parser("visuals", help="run visual sourcing only (reads cache/tts.json)")
     v.set_defaults(func=cmd_visuals)
+
+    a = sub.add_parser("assemble", help="assemble final video (reads tts+visuals cache)")
+    a.set_defaults(func=cmd_assemble)
 
     g = sub.add_parser("generate", help="generate a video")
     g.add_argument("--topic", help="topic to generate a video about")
