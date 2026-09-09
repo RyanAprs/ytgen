@@ -1,0 +1,40 @@
+# ---- Video ----
+resolution: "1080p"        # 720p | 1080p
+aspect: "16:9"             # 16:9 (long-form) | 9:16 (shorts)
+fps: 30
+
+# ---- Script / LLM ----
+llm:
+  provider: "ollama"       # ollama | openai
+  model: "llama3.1"
+  target_duration_sec: 180 # ~3 min video
+
+# ---- Research ----
+research:
+  enabled: true
+  max_sources: 6
+
+# ---- Voice (Edge-TTS) ----
+tts:
+  voice: "en-US-AriaNeural"
+  rate: "+0%"
+  pitch: "+0Hz"
+
+# ---- Captions ----
+captions:
+  enabled: true
+  font: "Arial"
+  font_size: 42
+  primary_color: "&H00FFFFFF"   # white (ASS BGR)
+  outline: 3
+
+# ---- Music ----
+music:
+  enabled: true
+  volume: 0.12                    # ducked under voice
+  dir: "assets/music"
+
+# ---- Visuals ----
+visuals:
+  sources: ["pexels", "pixabay"]
+  ken_burns: true
