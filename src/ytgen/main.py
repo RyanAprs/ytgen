@@ -12,6 +12,7 @@ from . import script as script_mod
 from . import tts as tts_mod
 from . import visuals as visuals_mod
 from . import assemble as assemble_mod
+from . import metadata as metadata_mod
 from . import llm as llm_mod
 
 console = Console()
@@ -74,11 +75,32 @@ def cmd_research(args) -> int:
     return 0
 
 
+def _clear_stale_cache(cfg, topic: str | None) -> None:
+    """Wipe index-named intermediate caches when the topic changes, so scene
+    clips/audio/captions from a prior topic don't get reused."""
+    import shutil
+    marker = cfg.cache_dir / ".topic"
+    prev = marker.read_text().strip() if marker.exists() else None
+    if topic and prev != topic:
+        for sub in ("audio", "scene_clips", "captions", "visuals"):
+            d = cfg.cache_dir / sub
+            if d.exists():
+                shutil.rmtree(d, ignore_errors=True)
+        for f in ("scenes.json", "tts.json", "visuals.json", "concat.mp4", "concat.txt"):
+            (cfg.cache_dir / f).unlink(missing_ok=True)
+        marker.write_text(topic)
+
+
 def cmd_generate(args) -> int:
     cfg = Config.load(args.config)
+    if getattr(args, "shorts", False):
+        cfg.raw["aspect"] = "9:16"
+        console.print("[dim]Shorts mode: aspect 9:16[/]")
     if not args.topic and not args.script:
         console.print("[red]Provide --topic or --script.[/]")
         return 2
+    # clear stale scene-clip cache if the topic changed (index-named files would collide)
+    _clear_stale_cache(cfg, args.topic)
     console.print(f"[bold]Pipeline plan[/] (topic={args.topic!r}, script={args.script!r})")
     skip_research = args.no_research or bool(args.script)
     research_data = None
@@ -129,7 +151,7 @@ def cmd_generate(args) -> int:
     console.print("[bold cyan]▶ Stage 3 scenes[/] (splitting)...")
     try:
         with console.status("segmenting into scenes..."):
-            scenes_data = script_mod.split_scenes(script_data["script"], cfg, cfg.cache_dir)
+            scenes_data = script_mod.split_scenes(script_data["script"], cfg, cfg.cache_dir, topic=args.topic or script_data.get("topic", ""))
     except llm_mod.LLMError as e:
         console.print(f"  [red]✗ LLM error:[/] {e}")
         return 3
@@ -163,8 +185,33 @@ def cmd_generate(args) -> int:
     console.print(
         f"  [green]✓[/] {asm['scenes']} scenes @ {asm['resolution']} → {asm['output']}")
 
+    # ---- Stage 7-8: metadata + thumbnail (M7) ----
+    console.print("[bold cyan]▶ Stage 7 output[/] (metadata + thumbnail)...")
+    with console.status("generating metadata + thumbnail..."):
+        meta = metadata_mod.run(cfg, cfg.cache_dir, cfg.output_dir)
+    console.print(
+        f"  [green]✓[/] {meta['tags']} tags, {meta['sources']} sources, "
+        f"thumbnail → output/")
+
     console.print(f"\n[bold green]✓ Video ready:[/] {asm['output']}")
-    console.print("[yellow]M6:[/] full video done. Metadata/thumbnail (M7) next.")
+    console.print(f"[green]✓ Thumbnail:[/] {meta['thumbnail']}")
+    console.print(f"[green]✓ Description:[/] {meta['description']}")
+    console.print("[yellow]Pipeline complete (M1-M7).[/]")
+    return 0
+
+
+def cmd_metadata(args) -> int:
+    cfg = Config.load(args.config)
+    if not (cfg.cache_dir / "script.json").exists():
+        console.print("[red]No cache/script.json — run `ytgen script` first.[/]")
+        return 2
+    console.print("[bold]Generating metadata + thumbnail...[/]")
+    with console.status("working..."):
+        meta = metadata_mod.run(cfg, cfg.cache_dir, cfg.output_dir)
+    console.print(f"[green]Title:[/] {meta['title']}")
+    console.print(f"[green]Tags:[/] {meta['tags']}  [green]Sources:[/] {meta['sources']}")
+    console.print(f"[green]Thumbnail:[/] {meta['thumbnail']}")
+    console.print(f"[green]Description:[/] {meta['description']}")
     return 0
 
 
@@ -241,7 +288,7 @@ def cmd_script(args) -> int:
         with console.status("writing script..."):
             sd = script_mod.generate_script(args.topic, research_data, cfg, cfg.cache_dir)
         with console.status("splitting scenes..."):
-            scd = script_mod.split_scenes(sd["script"], cfg, cfg.cache_dir)
+            scd = script_mod.split_scenes(sd["script"], cfg, cfg.cache_dir, topic=args.topic)
     except llm_mod.LLMError as e:
         console.print(f"[red]LLM error:[/] {e}")
         return 3
@@ -282,10 +329,14 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("assemble", help="assemble final video (reads tts+visuals cache)")
     a.set_defaults(func=cmd_assemble)
 
+    m = sub.add_parser("metadata", help="generate title/desc/tags/thumbnail (reads cache)")
+    m.set_defaults(func=cmd_metadata)
+
     g = sub.add_parser("generate", help="generate a video")
     g.add_argument("--topic", help="topic to generate a video about")
     g.add_argument("--script", help="path to an existing script file")
     g.add_argument("--no-research", action="store_true", help="skip research stage")
+    g.add_argument("--shorts", action="store_true", help="vertical 9:16 Shorts mode")
     g.set_defaults(func=cmd_generate)
 
     return p

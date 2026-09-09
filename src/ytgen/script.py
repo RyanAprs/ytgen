@@ -72,6 +72,24 @@ SCENES_SYS = (
     "Return strict JSON."
 )
 
+# generic literal terms that pull wrong/ambiguous stock footage
+_BAD_KW = {"star death", "point of no return", "mystery", "idea", "history",
+           "science", "concept", "theory", "process", "nature"}
+
+
+def _clean_keywords(kws: list[str], topic: str) -> list[str]:
+    """Drop ambiguous terms, keep concrete visual nouns, ensure topic context."""
+    out = []
+    for k in kws:
+        k = (k or "").strip().lower()
+        if not k or k in _BAD_KW or len(k) < 3:
+            continue
+        out.append(k)
+    if not out:
+        # fall back to topic-derived visual
+        out = [f"{topic} space" if topic else "abstract background"]
+    return out[:4]
+
 
 def _local_split(script: str, wpm: int) -> list[dict]:
     """Fallback: split by sentences into ~2-sentence scenes, keywords from nouns."""
@@ -92,15 +110,21 @@ def _local_split(script: str, wpm: int) -> list[dict]:
     return out
 
 
-def split_scenes(script: str, cfg, cache_dir: Path) -> dict:
+def split_scenes(script: str, cfg, cache_dir: Path, topic: str = "") -> dict:
     provider = cfg.get("llm.provider", "groq")
     model = cfg.get("llm.model", "openai/gpt-oss-20b")
     wpm = cfg.get("llm.wpm", 150)
 
     user = (
+        f"Topic of the video: {topic}\n\n"
         "Split this narration into sequential scenes. Each scene = 1-2 sentences "
-        "of the ORIGINAL text (do not rewrite), plus 2-4 concrete visual search "
-        "keywords for stock footage.\n\n"
+        "of the ORIGINAL text (do not rewrite), plus 2-4 CONCRETE, UNAMBIGUOUS "
+        "visual search keywords for stock footage. Rules for keywords:\n"
+        "- Use literal filmable objects/scenes (e.g. 'collapsing star', 'galaxy', "
+        "'telescope observatory'), NOT abstract nouns ('mystery','idea','history').\n"
+        "- Avoid phrases that are famous movie/brand terms (e.g. 'star death' pulls "
+        "Star Wars). Prefer scientific/physical descriptors.\n"
+        "- When ambiguous, add topic context (e.g. 'black hole simulation').\n\n"
         "Return ONLY valid JSON, no prose:\n"
         "{\"scenes\":[{\"text\":\"...\",\"visual_keywords\":[\"...\"]}]}\n\n"
         f"Narration:\n{script}"
@@ -125,7 +149,7 @@ def split_scenes(script: str, cfg, cache_dir: Path) -> dict:
         out.append({
             "index": i,
             "text": text,
-            "visual_keywords": sc.get("visual_keywords", [])[:4],
+            "visual_keywords": _clean_keywords(sc.get("visual_keywords", []), topic),
             "est_duration_sec": round(words / wpm * 60, 1),
         })
     data = {"scenes": out}

@@ -57,7 +57,8 @@ def _build_scene(scene: dict, caps: list[dict], out_mp4: Path,
             f"[{last}][{idx_in}:v]overlay=0:0:enable='between(t,{st},{en})'[v{i}]"
         )
         last = f"v{i}"
-    fc.append(f"[{last}]trim=duration={dur},setpts=PTS-STARTPTS[vout]")
+    fc.append(f"[{last}]trim=duration={dur},setpts=PTS-STARTPTS,"
+              f"fade=t=in:st=0:d=0.3,fade=t=out:st={max(dur-0.3,0):.2f}:d=0.3[vout]")
     filter_complex = ";".join(fc)
 
     cmd += ["-filter_complex", filter_complex,
@@ -106,6 +107,10 @@ def run(cfg, cache_dir: Path, output_dir: Path) -> dict:
         if cfg.get("captions.enabled", True):
             caps = cap_mod.render_scene_captions(sc, idx, cap_dir, w, h, cfg)
         out_mp4 = scenes_dir / f"scene_{idx:03d}.mp4"
+        # resume: skip if already rendered and newer than its inputs
+        if out_mp4.exists() and out_mp4.stat().st_size > 1024 and not cfg.get("_force", False):
+            scene_files.append(out_mp4)
+            continue
         _build_scene(merged, caps, out_mp4, w, h, fps, cfg)
         scene_files.append(out_mp4)
 
@@ -125,13 +130,17 @@ def run(cfg, cache_dir: Path, output_dir: Path) -> dict:
             "ffmpeg", "-y", "-i", str(concat_mp4),
             "-stream_loop", "-1", "-i", str(music),
             "-filter_complex",
-            f"[1:a]volume={vol}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0[a]",
+            f"[1:a]volume={vol}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0,"
+            f"aresample=48000,aformat=channel_layouts=stereo[a]",
             "-map", "0:v", "-map", "[a]",
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",
-            str(final),
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+            "-shortest", str(final),
         ])
     else:
-        _run(["ffmpeg", "-y", "-i", str(concat_mp4), "-c", "copy", str(final)])
+        # re-encode audio to standard 48kHz stereo (24kHz mono plays silent in some players)
+        _run(["ffmpeg", "-y", "-i", str(concat_mp4),
+              "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+              str(final)])
 
     return {"output": str(final), "scenes": len(scene_files),
             "resolution": f"{w}x{h}", "music": str(music) if music else None}
