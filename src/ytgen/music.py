@@ -90,6 +90,14 @@ def fetch(cfg, cache_dir: Path, topic: str, min_duration: float = 0.0) -> dict |
         return None
     print(f"  jamendo: matched tag '{used_tag}', {len(results)} tracks")
 
+    # keep only tracks with an explicit CC license URL: some tracks pass the
+    # ccnc/ccnd filter yet have an empty license_ccurl, so we can't write a
+    # correct attribution line for them -> skip (attribution is legally required).
+    results = [t for t in results if t.get("license_ccurl")]
+    if not results:
+        print("  jamendo: no track had an explicit license URL")
+        return None
+
     # order candidates: long-enough tracks first (avoid loop seams), then the rest
     long_first = [t for t in results if float(t.get("duration", 0)) >= min_duration]
     rest = [t for t in results if t not in long_first]
