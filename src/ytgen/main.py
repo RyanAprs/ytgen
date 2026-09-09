@@ -9,6 +9,7 @@ from .config import Config
 from . import checks
 from . import research as research_mod
 from . import script as script_mod
+from . import tts as tts_mod
 from . import llm as llm_mod
 
 console = Console()
@@ -135,7 +136,35 @@ def cmd_generate(args) -> int:
         f"  [green]✓[/] {len(scenes_data['scenes'])} scenes, "
         f"~{total:.0f}s total → cache/scenes.json")
 
-    console.print("\n[yellow]M3:[/] script + scenes done. TTS (M4) next.")
+    # ---- Stage 4: TTS voiceover (M4) ----
+    voice = cfg.get("tts.voice", "en-US-AriaNeural")
+    console.print(f"[bold cyan]▶ Stage 4 tts[/] ({voice})...")
+    with console.status("synthesizing voiceover..."):
+        tts_data = tts_mod.run(scenes_data["scenes"], cfg, cfg.cache_dir)
+    console.print(
+        f"  [green]✓[/] {len(tts_data['scenes'])} clips, "
+        f"{tts_data['total_sec']:.1f}s audio → cache/audio/")
+
+    console.print("\n[yellow]M4:[/] voiceover done. Visuals (M5) next.")
+    return 0
+
+
+def cmd_tts(args) -> int:
+    cfg = Config.load(args.config)
+    scenes_path = cfg.cache_dir / "scenes.json"
+    if not scenes_path.exists():
+        console.print("[red]No cache/scenes.json — run `ytgen script` first.[/]")
+        return 2
+    scenes = __import__("json").loads(scenes_path.read_text())["scenes"]
+    voice = cfg.get("tts.voice", "en-US-AriaNeural")
+    console.print(f"[bold]TTS[/] {len(scenes)} scenes, voice={voice}")
+    with console.status("synthesizing..."):
+        data = tts_mod.run(scenes, cfg, cfg.cache_dir)
+    console.print(f"[green]Done.[/] {len(data['scenes'])} clips, "
+                  f"{data['total_sec']:.1f}s total → cache/audio/")
+    for s in data["scenes"][:5]:
+        nw = len(s["words"])
+        console.print(f"  [{s['index']}] {s['duration_sec']}s, {nw} word marks — {s['text'][:50]}...")
     return 0
 
 
@@ -191,6 +220,9 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--topic", required=True, help="topic")
     sc.add_argument("--no-research", action="store_true", help="skip research if no cache")
     sc.set_defaults(func=cmd_script)
+
+    t = sub.add_parser("tts", help="run TTS stage only (reads cache/scenes.json)")
+    t.set_defaults(func=cmd_tts)
 
     g = sub.add_parser("generate", help="generate a video")
     g.add_argument("--topic", help="topic to generate a video about")
