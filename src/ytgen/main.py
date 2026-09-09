@@ -8,6 +8,8 @@ from rich.table import Table
 from .config import Config
 from . import checks
 from . import research as research_mod
+from . import script as script_mod
+from . import llm as llm_mod
 
 console = Console()
 
@@ -97,9 +99,74 @@ def cmd_generate(args) -> int:
             status = "[yellow]skipped[/]" if skip_research else "[green]done[/]"
         table.add_row(str(i), name, desc, status)
     console.print(table)
+
+    # ---- Stage 2-3: script + scenes (M3) ----
+    provider = cfg.get("llm.provider", "groq")
+    model = cfg.get("llm.model")
+    if args.script:
+        script_text = open(args.script).read().strip()
+        script_data = {"topic": args.topic or "custom", "title": args.topic or "Untitled",
+                       "script": script_text, "word_count": len(script_text.split())}
+        (cfg.cache_dir / "script.json").write_text(
+            __import__("json").dumps(script_data, indent=2, ensure_ascii=False))
+        console.print("  [green]✓[/] script loaded from file → cache/script.json")
+    else:
+        console.print(f"[bold cyan]▶ Stage 2 script[/] ({provider}/{model})...")
+        try:
+            with console.status("writing grounded script..."):
+                script_data = script_mod.generate_script(
+                    args.topic, research_data or {}, cfg, cfg.cache_dir)
+        except llm_mod.LLMError as e:
+            console.print(f"  [red]✗ LLM error:[/] {e}")
+            return 3
+        console.print(
+            f"  [green]✓[/] '{script_data['title']}' — "
+            f"{script_data['word_count']} words → cache/script.json")
+
+    console.print("[bold cyan]▶ Stage 3 scenes[/] (splitting)...")
+    try:
+        with console.status("segmenting into scenes..."):
+            scenes_data = script_mod.split_scenes(script_data["script"], cfg, cfg.cache_dir)
+    except llm_mod.LLMError as e:
+        console.print(f"  [red]✗ LLM error:[/] {e}")
+        return 3
+    total = sum(s["est_duration_sec"] for s in scenes_data["scenes"])
     console.print(
-        "\n[yellow]M2:[/] research implemented. Script gen (M3) next."
-    )
+        f"  [green]✓[/] {len(scenes_data['scenes'])} scenes, "
+        f"~{total:.0f}s total → cache/scenes.json")
+
+    console.print("\n[yellow]M3:[/] script + scenes done. TTS (M4) next.")
+    return 0
+
+
+def cmd_script(args) -> int:
+    cfg = Config.load(args.config)
+    research_path = cfg.cache_dir / "research.json"
+    research_data = {}
+    if research_path.exists():
+        research_data = __import__("json").loads(research_path.read_text())
+    elif not args.no_research:
+        console.print("[yellow]No research.json — running research first...[/]")
+        research_data = research_mod.run(
+            args.topic, cfg.cache_dir, max_sources=cfg.get("research.max_sources", 6))
+    provider = cfg.get("llm.provider", "groq")
+    model = cfg.get("llm.model")
+    console.print(f"[bold]Script gen[/] ({provider}/{model}) for {args.topic!r}")
+    try:
+        with console.status("writing script..."):
+            sd = script_mod.generate_script(args.topic, research_data, cfg, cfg.cache_dir)
+        with console.status("splitting scenes..."):
+            scd = script_mod.split_scenes(sd["script"], cfg, cfg.cache_dir)
+    except llm_mod.LLMError as e:
+        console.print(f"[red]LLM error:[/] {e}")
+        return 3
+    console.print(f"\n[bold]Title:[/] {sd['title']}")
+    console.print(f"[bold]Words:[/] {sd['word_count']}\n")
+    console.print(sd["script"][:500] + ("..." if len(sd["script"]) > 500 else ""))
+    console.print(f"\n[bold]{len(scd['scenes'])} scenes:[/]")
+    for s in scd["scenes"][:6]:
+        kw = ", ".join(s["visual_keywords"])
+        console.print(f"  [{s['index']}] ({s['est_duration_sec']}s) [dim]{kw}[/]")
     return 0
 
 
@@ -115,6 +182,11 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--topic", required=True, help="topic to research")
     r.add_argument("--max-sources", type=int, default=None, dest="max_sources")
     r.set_defaults(func=cmd_research)
+
+    sc = sub.add_parser("script", help="run script+scenes stage only (test)")
+    sc.add_argument("--topic", required=True, help="topic")
+    sc.add_argument("--no-research", action="store_true", help="skip research if no cache")
+    sc.set_defaults(func=cmd_script)
 
     g = sub.add_parser("generate", help="generate a video")
     g.add_argument("--topic", help="topic to generate a video about")
