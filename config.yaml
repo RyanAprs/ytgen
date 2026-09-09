@@ -43,3 +43,10 @@ music:
 visuals:
   sources: ["pexels", "pixabay"]
   ken_burns: true
+
+# ---- Bilibili (Chinese metadata for cross-posting) ----
+bilibili:
+  enabled: true                   # also emit Chinese title/desc/tags -> output/bilibili_zh.txt + .json
+  tid: 228                        # 知识 → 人文历史 (Humanities & History). See skill for other tids.
+  copyright: 2                    # 1=自制/original, 2=转载/reprint (use 2 for stock footage + Jamendo music)
+

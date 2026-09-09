@@ -96,7 +96,8 @@ def finalize(cfg, cache_dir: Path, output_dir: Path) -> dict:
     dest = project_dir(cfg, cache_dir, output_dir)
     dest.mkdir(parents=True, exist_ok=True)
     moved = []
-    for name in ("video.mp4", "thumbnail.png", "description.txt", "metadata.json"):
+    for name in ("video.mp4", "thumbnail.png", "description.txt", "metadata.json",
+                 "bilibili_zh.txt", "bilibili_zh.json"):
         src = output_dir / name
         if src.exists():
             out = dest / name

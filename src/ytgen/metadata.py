@@ -106,6 +106,61 @@ def _thumbnail(title: str, out: Path, w: int, h: int, bg_clip: str | None,
     base.save(out)
 
 
+def _gen_bilibili_zh(topic: str, title: str, script: str, cfg,
+                     music_credit: str, sources: list[str]) -> dict:
+    """Generate Chinese (Simplified) Bilibili metadata: title, description, tags.
+
+    Translates/adapts the English script into a 简介 (intro), a punchy 标题, and
+    Chinese search 标签. Falls back gracefully if the LLM refuses or errors.
+    """
+    provider = cfg.get("llm.provider", "groq")
+    model = cfg.get("llm.model", "openai/gpt-oss-20b")
+    zh = {"title": title, "description": "", "tags": []}
+    try:
+        data = llm.chat_json(
+            [{"role": "system", "content":
+                "You are a bilingual (English↔Simplified Chinese) editor for a Bilibili "
+                "history channel. Return strict JSON with Simplified Chinese values."},
+             {"role": "user", "content":
+                f"English topic: {topic}\nEnglish title: {title}\n"
+                f"English script excerpt:\n{script[:1600]}\n\n"
+                "Produce Bilibili metadata in SIMPLIFIED CHINESE. Return JSON: "
+                '{"title":"<catchy Chinese title, <=40 chars>",'
+                '"description":"<3-5 sentence Chinese 简介 summarizing the video>",'
+                '"tags":["<6-10 Chinese search tags, no # symbol>"]}'}],
+            provider=provider, model=model, temperature=0.6,
+        )
+        t = (data.get("title") or "").strip()
+        d = (data.get("description") or "").strip()
+        tg = [str(x).strip().lstrip("#") for x in data.get("tags", []) if str(x).strip()][:10]
+        if t:
+            zh["title"] = t
+        if d:
+            zh["description"] = d
+        if tg:
+            zh["tags"] = tg
+    except Exception:
+        pass
+    if not zh["description"]:
+        zh["description"] = f"本视频讲述：{topic}。"  # minimal fallback
+    if not zh["tags"]:
+        zh["tags"] = ["历史", "历史科普"]
+
+    # build ready-to-paste 简介 with attribution (license compliance carries over)
+    body = zh["description"].rstrip() + "\n\n"
+    if music_credit:
+        body += music_credit + "\n"
+    body += "素材 Footage: Pexels & Pixabay (free license).\n"
+    if sources:
+        body += "史料 Sources: " + "、".join(sources) + "\n"
+    body += "原声为英文旁白 / Original narration in English.\n"
+    zh["desc_full"] = body
+    zh["tid"] = cfg.get("bilibili.tid", 228)
+    zh["copyright"] = cfg.get("bilibili.copyright", 2)
+    zh["source_url"] = sources[0] if sources else ""
+    return zh
+
+
 def run(cfg, cache_dir: Path, output_dir: Path) -> dict:
     script_data = json.loads((cache_dir / "script.json").read_text())
     topic = script_data.get("topic", "")
@@ -128,12 +183,14 @@ def run(cfg, cache_dir: Path, output_dir: Path) -> dict:
 
     desc_full = desc + "\n\n"
     # music attribution (Jamendo CC-BY compliance)
+    music_credit = ""
     mp = cache_dir / "music.json"
     if mp.exists():
         try:
             from . import music as music_mod
             line = music_mod.credit_line(json.loads(mp.read_text()))
             if line:
+                music_credit = line
                 desc_full += line + "\n\n"
         except Exception:
             pass
@@ -144,6 +201,25 @@ def run(cfg, cache_dir: Path, output_dir: Path) -> dict:
     meta = {"title": title, "description": desc, "tags": tags, "sources": sources}
     (output_dir / "metadata.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
     (output_dir / "description.txt").write_text(desc_full)
+
+    # ---- Bilibili Chinese metadata (cross-post) ----
+    if cfg.get("bilibili.enabled", False):
+        try:
+            zh = _gen_bilibili_zh(topic, title, script, cfg, music_credit, sources)
+            (output_dir / "bilibili_zh.json").write_text(
+                json.dumps(zh, indent=2, ensure_ascii=False))
+            txt = (
+                f"【标题 Title】\n{zh['title']}\n\n"
+                f"【分区 Partition】tid={zh['tid']} (知识→人文历史)\n"
+                f"【类型 Copyright】{zh['copyright']} "
+                f"({'自制/original' if zh['copyright'] == 1 else '转载/reprint'})\n"
+                f"【转载来源 Source】{zh.get('source_url','')}\n\n"
+                f"【标签 Tags】\n{' '.join(zh['tags'])}\n\n"
+                f"【简介 Description】\n{zh['desc_full']}"
+            )
+            (output_dir / "bilibili_zh.txt").write_text(txt)
+        except Exception:
+            pass
 
     # thumbnail — use first non-placeholder clip as bg
     aspect = cfg.get("aspect", "16:9")
