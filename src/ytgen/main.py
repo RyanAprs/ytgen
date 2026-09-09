@@ -7,6 +7,7 @@ from rich.table import Table
 
 from .config import Config
 from . import checks
+from . import research as research_mod
 
 console = Console()
 
@@ -46,27 +47,58 @@ def cmd_doctor(args) -> int:
     return 0
 
 
+def cmd_research(args) -> int:
+    cfg = Config.load(args.config)
+    max_sources = args.max_sources or cfg.get("research.max_sources", 6)
+    console.print(f"[bold]Researching[/] {args.topic!r} (max_sources={max_sources})...")
+    with console.status("searching + extracting..."):
+        data = research_mod.run(args.topic, cfg.cache_dir, max_sources=max_sources)
+    console.print(
+        f"[green]Done.[/] {len(data['sources'])} sources, {len(data['facts'])} facts "
+        f"→ {cfg.cache_dir / 'research.json'}"
+    )
+    table = Table(title="Sources")
+    table.add_column("#"); table.add_column("Title"); table.add_column("URL")
+    for i, s in enumerate(data["sources"], 1):
+        table.add_row(str(i), (s["title"] or "")[:50], s["url"][:60])
+    console.print(table)
+    if data["facts"]:
+        console.print("\n[bold]Sample facts:[/]")
+        for f in data["facts"][:5]:
+            console.print(f"  • {f['claim'][:120]}")
+    return 0
+
+
 def cmd_generate(args) -> int:
     cfg = Config.load(args.config)
     if not args.topic and not args.script:
         console.print("[red]Provide --topic or --script.[/]")
         return 2
     console.print(f"[bold]Pipeline plan[/] (topic={args.topic!r}, script={args.script!r})")
+    skip_research = args.no_research or bool(args.script)
+    research_data = None
+    if not skip_research:
+        max_sources = cfg.get("research.max_sources", 6)
+        console.print(f"[bold cyan]▶ Stage 1 research[/] (max_sources={max_sources})...")
+        with console.status("searching + extracting..."):
+            research_data = research_mod.run(args.topic, cfg.cache_dir, max_sources=max_sources)
+        console.print(
+            f"  [green]✓[/] {len(research_data['sources'])} sources, "
+            f"{len(research_data['facts'])} facts → cache/research.json"
+        )
     table = Table()
     table.add_column("#")
     table.add_column("Stage")
     table.add_column("Description")
     table.add_column("Status")
-    skip_research = args.no_research or bool(args.script)
     for i, (name, desc) in enumerate(STAGES, 1):
         status = "[dim]not implemented[/]"
-        if name == "research" and skip_research:
-            status = "[yellow]skipped[/]"
+        if name == "research":
+            status = "[yellow]skipped[/]" if skip_research else "[green]done[/]"
         table.add_row(str(i), name, desc, status)
     console.print(table)
     console.print(
-        "\n[yellow]M1 skeleton:[/] pipeline stages are stubs. "
-        "Implemented incrementally (M2 research next)."
+        "\n[yellow]M2:[/] research implemented. Script gen (M3) next."
     )
     return 0
 
@@ -78,6 +110,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     d = sub.add_parser("doctor", help="check environment/dependencies")
     d.set_defaults(func=cmd_doctor)
+
+    r = sub.add_parser("research", help="run research stage only (test)")
+    r.add_argument("--topic", required=True, help="topic to research")
+    r.add_argument("--max-sources", type=int, default=None, dest="max_sources")
+    r.set_defaults(func=cmd_research)
 
     g = sub.add_parser("generate", help="generate a video")
     g.add_argument("--topic", help="topic to generate a video about")
