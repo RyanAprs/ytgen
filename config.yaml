@@ -35,7 +35,7 @@ captions:
 music:
   enabled: true
   provider: "jamendo"             # "jamendo" (real instrumental via API) | "local" (files in dir)
-  mood: "ambient cinematic"       # jamendo fuzzytags search (genre/mood keywords)
+  mood: "piano"                   # jamendo fuzzytags (single word works best; multi-word = AND = often 0)
   volume: 0.12                    # ducked under voice (melodic music sits lower than drone)
   dir: "assets/music"
 
