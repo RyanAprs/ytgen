@@ -121,7 +121,7 @@ def run(cfg, cache_dir: Path, output_dir: Path) -> dict:
         research = json.loads(rp.read_text())
         seen = set()
         for s in research.get("sources", []):
-            u = s.get("url")
+            u = s.get("url") if isinstance(s, dict) else s
             if u and u not in seen:
                 seen.add(u)
                 sources.append(u)

@@ -1,0 +1,72 @@
+{
+  "cookie_info": {
+    "cookies": [
+      {
+        "expires": 1796752612,
+        "http_only": 1,
+        "name": "SESSDATA",
+        "same_site": 0,
+        "secure": 0,
+        "value": "e23cf1d5%2C1804528612%2C9e065c92CjDqXRH_FVE2ncKUULH_BBvwCQMCLkicMCFeVISPvVys3RM1iagk_Rug2elf9PhffEASVkltdFA2NnhkdFVpYlRIYWoydDlHSWJlOUd4NzNDQnZuUVBJQmJGMkVMalA1cldNcmFtSkNMTnFXUndNc3Z0ZWxZaUdQMFNuOGJ3M2lMOS1sbVllVTFRIIEC"
+      },
+      {
+        "expires": 1796752612,
+        "http_only": 0,
+        "name": "bili_jct",
+        "same_site": 0,
+        "secure": 0,
+        "value": "e842c83c39c4bccfe30db07ec5d75edb"
+      },
+      {
+        "expires": 1796752612,
+        "http_only": 0,
+        "name": "DedeUserID",
+        "same_site": 0,
+        "secure": 0,
+        "value": "3747551903747914"
+      },
+      {
+        "expires": 1796752612,
+        "http_only": 0,
+        "name": "DedeUserID__ckMd5",
+        "same_site": 0,
+        "secure": 0,
+        "value": "fdae0502f353588a"
+      },
+      {
+        "expires": 1796752612,
+        "http_only": 0,
+        "name": "sid",
+        "same_site": 0,
+        "secure": 0,
+        "value": "7i0mstnf"
+      },
+      {
+        "expires": 1796752612,
+        "http_only": 1,
+        "name": "sec_ck",
+        "same_site": 0,
+        "secure": 1,
+        "value": "98EnUegnUuDpNv9NiVC8FM-I-0CHmV8bCTlhuVxeujGrOTjjEZG1MSB1NaMknwCXguVOMKLr-LMb7iCu0t1BA-qsdztZqRYe_kAncFqD3Wq6pAmOjMLbW2Iu5B9B4XlLybS1j7N-vQILkXbU4L8lrYcan8hJ5SLKuPhI-5ctsKxCjV2Ks0TklsRVe5u6HSAj!Mss"
+      }
+    ],
+    "domains": [
+      ".bilibili.com",
+      ".biligame.com",
+      ".bilibili.cn",
+      ".huasheng.cn"
+    ]
+  },
+  "sso": [
+    "https://passport.bilibili.com/api/v2/sso",
+    "https://passport.biligame.com/api/v2/sso",
+    "https://passport.bilibili.cn/api/v2/sso"
+  ],
+  "token_info": {
+    "access_token": "6d7f63834276a6775d96e6b0789f7892CjDqXRH_FVE2ncKUULH_BBvwCQMCLkicMCFeVISPvVys3RM1iagk_Rug2elf9PhffEASVkltdFA2NnhkdFVpYlRIYWoydDlHSWJlOUd4NzNDQnZuUVBJQmJGMkVMalA1cldNcmFtSkNMTnFXUndNc3Z0ZWxZaUdQMFNuOGJ3M2lMOS1sbVllVTFRIIEC",
+    "expires_in": 15552000,
+    "mid": 3747551903747914,
+    "refresh_token": "b51ef7e3683759fb139fe62fba58a392"
+  },
+  "platform": "BiliTV"
+}

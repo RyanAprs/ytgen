@@ -14,9 +14,13 @@ from pathlib import Path
 from . import llm
 
 SCRIPT_SYS = (
-    "You are an expert faceless-YouTube scriptwriter. Write engaging, accurate, "
-    "spoken-word narration. No stage directions, no 'welcome back', no headings — "
-    "just clean narration sentences meant to be read aloud by a TTS voice. "
+    "You are an expert faceless-YouTube scriptwriter for an educational HISTORY "
+    "channel. Write engaging, accurate, spoken-word narration about documented "
+    "historical events. Historical facts may include battles, assassinations, and "
+    "the deaths of ancient figures — report them factually and soberly as any history "
+    "documentary would; this is educational content about events ~1600 years ago. "
+    "No stage directions, no 'welcome back', no headings — just clean narration "
+    "sentences meant to be read aloud by a TTS voice. "
     "Ground every claim in the provided facts; do not invent statistics."
 )
 
@@ -74,20 +78,30 @@ SCENES_SYS = (
 
 # generic literal terms that pull wrong/ambiguous stock footage
 _BAD_KW = {"star death", "point of no return", "mystery", "idea", "history",
-           "science", "concept", "theory", "process", "nature"}
+           "science", "concept", "theory", "process", "nature",
+           # modern-military terms that pull tanks/soldiers/rockets instead of antiquity
+           "army", "military", "soldier", "soldiers", "war", "battle", "crisis",
+           "weapon", "weapons", "attack", "invasion", "troops", "fighter"}
+
+# words that, if present, mean the scene is about ancient Rome -> force an antiquity anchor
+_ROME_ANCHOR = "ancient roman"
 
 
 def _clean_keywords(kws: list[str], topic: str) -> list[str]:
-    """Drop ambiguous terms, keep concrete visual nouns, ensure topic context."""
+    """Drop ambiguous terms, keep concrete visual nouns, ensure ancient-Rome context."""
     out = []
     for k in kws:
         k = (k or "").strip().lower()
         if not k or k in _BAD_KW or len(k) < 3:
             continue
+        # anchor generic terms to antiquity so stock search returns Roman ruins/reenactment,
+        # not modern soldiers/tanks (hard-won: 'army'/'crisis' pulled Bundeswehr footage)
+        if not any(w in k for w in ("roman", "rome", "ancient", "colosseum", "ruin",
+                                    "empire", "legion", "gladiator", "marble", "statue")):
+            k = f"{_ROME_ANCHOR} {k}"
         out.append(k)
     if not out:
-        # fall back to topic-derived visual
-        out = [f"{topic} space" if topic else "abstract background"]
+        out = ["ancient roman ruins"]
     return out[:4]
 
 

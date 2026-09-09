@@ -119,7 +119,15 @@ def run(cfg, cache_dir: Path, output_dir: Path) -> dict:
         if not vis:
             continue
         merged = dict(sc)
-        merged["video"] = vis["video"]
+        vid = vis["video"]
+        # defensive: a source download can fail silently (file missing/empty) — one bad
+        # clip must not kill the whole render. Substitute a solid placeholder instead.
+        if (not vid) or (not Path(vid).exists()) or Path(vid).stat().st_size < 1024:
+            from . import visuals as _vis
+            ph = scenes_dir.parent / "visuals" / f"placeholder_{idx:03d}.mp4"
+            _vis._placeholder(ph, cfg.get("aspect", "16:9"), sc.get("duration_sec", 6.0))
+            vid = str(ph)
+        merged["video"] = vid
         caps = []
         if cfg.get("captions.enabled", True):
             caps = cap_mod.render_scene_captions(sc, idx, cap_dir, w, h, cfg)

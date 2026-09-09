@@ -125,6 +125,15 @@ def cmd_generate(args) -> int:
             f"  [green]✓[/] {len(research_data['sources'])} sources, "
             f"{len(research_data['facts'])} facts → cache/research.json"
         )
+    elif not args.script:
+        # --no-research: reuse an existing cache/research.json so the script stays grounded
+        rp = cfg.cache_dir / "research.json"
+        if rp.exists():
+            import json as _json
+            research_data = _json.loads(rp.read_text())
+            console.print(
+                f"  [dim]reusing cached research.json "
+                f"({len(research_data.get('facts', []))} facts)[/]")
     table = Table()
     table.add_column("#")
     table.add_column("Stage")
