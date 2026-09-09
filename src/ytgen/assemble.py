@@ -125,12 +125,14 @@ def run(cfg, cache_dir: Path, output_dir: Path) -> dict:
     music = _pick_music(cfg)
     if music:
         vol = cfg.get("music.volume", 0.12)
-        # mix: voice (0:a) full + music (1:a) ducked, music looped, cut to video len
+        # normalize=0 keeps voice at full level (default amix halves inputs -> quiet mix);
+        # music is pre-ducked to `vol` and sits under the narration.
         _run([
             "ffmpeg", "-y", "-i", str(concat_mp4),
             "-stream_loop", "-1", "-i", str(music),
             "-filter_complex",
-            f"[1:a]volume={vol}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0,"
+            f"[1:a]volume={vol}[m];"
+            f"[0:a][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
             f"aresample=48000,aformat=channel_layouts=stereo[a]",
             "-map", "0:v", "-map", "[a]",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",

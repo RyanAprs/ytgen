@@ -13,6 +13,7 @@ from . import tts as tts_mod
 from . import visuals as visuals_mod
 from . import assemble as assemble_mod
 from . import metadata as metadata_mod
+from . import archive as archive_mod
 from . import llm as llm_mod
 
 console = Console()
@@ -76,12 +77,23 @@ def cmd_research(args) -> int:
 
 
 def _clear_stale_cache(cfg, topic: str | None) -> None:
-    """Wipe index-named intermediate caches when the topic changes, so scene
-    clips/audio/captions from a prior topic don't get reused."""
+    """When the topic changes, archive the PRIOR topic's clips first (so they
+    aren't lost), then wipe index-named intermediate caches so scene
+    clips/audio/captions from the old topic aren't reused."""
     import shutil
     marker = cfg.cache_dir / ".topic"
     prev = marker.read_text().strip() if marker.exists() else None
     if topic and prev != topic:
+        # archive old topic's clips before deleting them
+        if (cfg.cache_dir / "visuals").exists() or (cfg.cache_dir / "visuals.json").exists():
+            try:
+                arch = archive_mod.run(cfg, cfg.cache_dir, cfg.output_dir)
+                if arch.get("archived"):
+                    console.print(
+                        f"[dim]Archived {arch['archived']} clips from previous topic "
+                        f"→ {arch['dir']}[/]")
+            except Exception as e:
+                console.print(f"[yellow]Could not archive prior clips: {e}[/]")
         for sub in ("audio", "scene_clips", "captions", "visuals"):
             d = cfg.cache_dir / sub
             if d.exists():
@@ -196,7 +208,27 @@ def cmd_generate(args) -> int:
     console.print(f"\n[bold green]✓ Video ready:[/] {asm['output']}")
     console.print(f"[green]✓ Thumbnail:[/] {meta['thumbnail']}")
     console.print(f"[green]✓ Description:[/] {meta['description']}")
+
+    # ---- archive used clips (local keep) ----
+    if not getattr(args, "no_archive", False):
+        arch = archive_mod.run(cfg, cfg.cache_dir, cfg.output_dir)
+        if arch["archived"]:
+            console.print(f"[green]✓ Archived {arch['archived']} clips:[/] {arch['dir']}")
+
     console.print("[yellow]Pipeline complete (M1-M7).[/]")
+    return 0
+
+
+def cmd_archive(args) -> int:
+    cfg = Config.load(args.config)
+    console.print("[bold]Archiving used clips...[/]")
+    arch = archive_mod.run(cfg, cfg.cache_dir, cfg.output_dir)
+    if arch["archived"]:
+        console.print(f"[green]Archived {arch['archived']} clips →[/] {arch['dir']}")
+        console.print("[dim]Note: Pexels/Pixabay footage — use in videos only, "
+                      "do NOT resell/redistribute as stock.[/]")
+    else:
+        console.print(f"[yellow]Nothing archived[/] ({arch.get('note','no clips')})")
     return 0
 
 
@@ -332,11 +364,15 @@ def build_parser() -> argparse.ArgumentParser:
     m = sub.add_parser("metadata", help="generate title/desc/tags/thumbnail (reads cache)")
     m.set_defaults(func=cmd_metadata)
 
+    ar = sub.add_parser("archive", help="archive used clips to output/<slug>/clips/ (local keep)")
+    ar.set_defaults(func=cmd_archive)
+
     g = sub.add_parser("generate", help="generate a video")
     g.add_argument("--topic", help="topic to generate a video about")
     g.add_argument("--script", help="path to an existing script file")
     g.add_argument("--no-research", action="store_true", help="skip research stage")
     g.add_argument("--shorts", action="store_true", help="vertical 9:16 Shorts mode")
+    g.add_argument("--no-archive", action="store_true", help="don't archive used clips")
     g.set_defaults(func=cmd_generate)
 
     return p
